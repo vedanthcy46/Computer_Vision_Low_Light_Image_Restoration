@@ -6,6 +6,12 @@ data/*
 !data/README.md
 results/*
 !results/.gitkeep
+!results/final/
+!results/quality_aware_check.md
+!results/train_a.log
+!results/train_b.log
+results/final/visuals/*
+!results/final/visuals/fail_*.png
 runs/
 *.egg-info/
 .streamlit/secrets.toml

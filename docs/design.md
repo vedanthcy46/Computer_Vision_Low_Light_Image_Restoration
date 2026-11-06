@@ -24,8 +24,7 @@ testing on unseen images, PSNR/SSIM/LPIPS/NIQE/latency/noise/edge metrics and a 
 
 ## 2. Data
 
-LOL (485 train / 15 test pairs), LOL-v2 (Real_captured and Synthetic, train/test), MIT-Adobe FiveK (well-exposed images for
-NIQE fitting / synthetic degradation) and Zero-DCE's recipe (see `data/README.md`). Splits: fine-tune only on `Train`; all reported
+LOL (485 train / 15 test pairs), LOL-v2 (Real_captured 689/100 and Synthetic 900/100 train/test pairs), the 1,000-pair *BrighteningTrain* set (extra training images and well-exposed NIQE fitting data), the benchmark folders in `Test.zip` (DICM, LIME, MEF, NPE, VV, Fusion: used only as **unseen** images, never for training) and Zero-DCE's recipe (see `data/README.md`). MIT-Adobe FiveK was not used. Splits: fine-tune only on `Train`; all reported
 numbers use held-out `Test` splits and an `unseen/` folder evaluated with no-reference metrics only.
 `lowlight/data.py::degrade_low_light` provides a physically motivated synthetic degradation (linear-light attenuation with a
 non-uniform field and a light-source blob, per-channel colour cast, signal-dependent shot + read noise, 8-bit quantisation) used for
@@ -68,66 +67,142 @@ Baselines for reference: identity, global auto-gamma, global histogram equalisat
 
 ## 5. Results
 
-> **Status of the numbers.** The dataset hosts (LOL, Kaggle, FiveK) were unreachable from the sandbox in which this code was developed,
-> so the table below is a **synthetic-data smoke run** (16 degraded images, 600 px max; Zero-DCE weights trained for 40 epochs on only
-> 7 synthetic images, LPIPS/NIQE backbones not downloadable -> n/a). It demonstrates the evaluation machinery and the *relative* contribution
-> of the classical components; it is **not** a result on LOL. The deep-learning and hybrid rows in particular will change once
-> `weights/zero_dce.pt` is trained on LOL (README -> Reproducing) and `scripts/evaluate.py` is re-run; replace this section with those numbers.
+All numbers below are produced by `scripts/evaluate.py` (full tables per dataset in `eval_P1_VisionX.md`, per-image values in
+`results/final/per_image.csv`). Setup: Zero-DCE trained 15 epochs zero-reference (LOL + LOL-v2 + BrighteningTrain low-light images)
+then fine-tuned 10 epochs supervised (L1 + SSIM) on the **train** splits of LOL, LOL-v2 Real and LOL-v2 Synthetic (7,468 patches);
+**all reported numbers are on held-out test splits or on unseen images**. At most 30 images per set, resized to <= 600 px;
+latency is single-image CPU inference. LPIPS is AlexNet-LPIPS. NIQE is a **locally fitted** NIQE-style model (300 well-exposed
+LOL / LOL-v2 / Brightening images, `weights/niqe_params.npz`), so absolute NIQE values are not comparable with the official NIQE.
+Best value per column (among the five methods, input excluded) is in bold. This is a short training schedule (25 epochs in total on a laptop GPU), not a tuned one.
 
-| Method (synthetic smoke run) | PSNR ↑ | SSIM ↑ | Latency ms ↓ (256 px) | Noise suppr. ↑ | Edge pres. ↑ | Chroma dE ↓ |
-|---|---|---|---|---|---|---|
-| input | 9.86 | 0.284 | 0 | 1.0 | 0.605 | 21.4 |
-| auto-gamma | 14.50 | 0.281 | 1.4 | 1.3 | 0.406 | 27.9 |
-| histogram eq. | 12.23 | 0.292 | 1.3 | 1.0 | 0.545 | 22.0 |
-| **classical** | 16.39 | 0.586 | 34.7 | 8.4 | 0.590 | 11.4 |
-| deep learning (smoke-trained) | 11.29 | 0.404 | 61.2 | 4.4 | 0.492 | 34.2 |
-| **hybrid** | 15.97 | 0.568 | 106.8 | 9.2 | 0.535 | 17.6 |
+### 5.1 Comparison: classical vs deep learning vs hybrid
 
-Observations that are likely to transfer: both classical and hybrid beat naive global methods by a wide margin and suppress noise
-8-9x; the under-trained deep branch is the weakest and drags the hybrid slightly below the classical pipeline *in this run* - the hybrid is
-only as good as its learned branch, which is why training on real data matters.
+**LOL eval15 (15 paired images)**
 
-### Ablation (synthetic smoke run, PSNR dB / SSIM / noise suppression)
+| Method | PSNR ↑ | SSIM ↑ | LPIPS ↓ | NIQE ↓ | Latency ms ↓ | Noise suppr. ↑ | Edge pres. ↑ | Over-exp. ↓ | Colour dE ↓ |
+|---|---|---|---|---|---|---|---|---|---|
+| input (no enhancement) | 7.77 | 0.191 | 0.560 | 2.56 | 0 | 0.98 | 0.834 | 0.000 | 13.4 |
+| global auto-gamma | 16.19 | 0.637 | 0.404 | 3.77 | 14 | 2.33 | 0.756 | **0.000** | 13.6 |
+| global histogram eq. | 13.96 | 0.411 | 0.590 | 5.84 | 4 | 0.76 | 0.750 | 0.035 | 13.4 |
+| **classical** | 17.05 | 0.663 | 0.328 | 3.21 | 126 | 1.89 | 0.848 | **0.000** | 10.0 |
+| **deep learning** | **18.54** | 0.575 | 0.351 | 5.35 | 210 | 1.30 | 0.843 | **0.000** | 12.0 |
+| **hybrid** | 18.16 | **0.716** | **0.284** | **3.01** | 436 | **2.39** | **0.870** | **0.000** | **9.9** |
 
-| Removed component | classical | hybrid |
-|---|---|---|
-| none (full) | 16.39 / 0.586 / 8.4 | 15.97 / 0.568 / 9.2 |
-| gain-aware denoising | 13.97 / 0.250 / 0.6 (**-2.4 dB**) | 14.24 / 0.267 / 0.7 (-1.7 dB) |
-| Wiener shrinkage | 16.23 / 0.461 / 2.4 (SSIM -0.13) | 16.12 / 0.472 / 3.0 (SSIM -0.10) |
-| CLAHE | 15.08 / 0.553 / 23.2 (-1.3 dB; CLAHE itself costs ~2.8x noise suppression) | 15.11 / 0.530 / 18.4 (-0.9 dB) |
-| tone stretch | 15.93 / 0.591 / 9.6 (-0.5 dB) | 15.38 / 0.558 / 10.7 (-0.6 dB) |
-| adaptive parameters (fixed instead) | **16.81** / 0.586 / 4.6 (+0.4 dB, noise x1.8 worse) | 14.95 / 0.525 / 5.4 (**-1.0 dB**) |
-| colour correction | 16.69 / 0.591 / 8.7 (+0.3 dB and lower chroma dE with it *off*) | 16.09 / 0.569 / 9.4 |
-| illumination prior (fusion) | - | 15.00 / 0.543 / 10.4 (-1.0 dB) |
-| pyramid blending (alpha instead) | - | 15.85 / 0.561 / 9.9 (-0.1 dB) |
-| DL pre-denoise | - | 13.40 / 0.285 / 1.3 (**-2.6 dB**) |
-| deep branch (= classical only) | - | 16.39 / 0.586 (+0.4 dB, untrained DL) |
-| quality-aware strategy (DL) | 11.29 / 0.404 (with) vs 9.29 / 0.168 (raw Zero-DCE) | |
-| MSRCP instead of illumination decomposition | 14.32 / 0.446 (-2.1 dB) | |
+**LOL-v2 Real_captured Test (30 paired images)**
 
-Reading: denoising/shrinkage are the load-bearing components; the quality-aware wrapper more than doubles raw Zero-DCE's SSIM; the
-illumination prior and adaptive parameters help the *hybrid* by ~1 dB; on this synthetic set fixed parameters score slightly higher PSNR
-for the classical pipeline but with 1.8x more residual noise, and removing colour correction improves PSNR/SSIM a little (synthetic images have
-a mild random cast and a neutral ground truth) - re-check on LOL before changing defaults.
+| Method | PSNR ↑ | SSIM ↑ | LPIPS ↓ | NIQE ↓ | Latency ms ↓ | Noise suppr. ↑ | Edge pres. ↑ | Over-exp. ↓ | Colour dE ↓ |
+|---|---|---|---|---|---|---|---|---|---|
+| input (no enhancement) | 7.93 | 0.182 | 0.557 | 2.61 | 0 | 0.98 | 0.757 | 0.000 | 7.3 |
+| global auto-gamma | **18.86** | 0.660 | 0.392 | 3.93 | 8 | 2.19 | 0.754 | **0.000** | 9.6 |
+| global histogram eq. | 15.98 | 0.462 | 0.520 | 5.74 | 3 | 0.81 | 0.766 | 0.025 | **7.3** |
+| **classical** | 17.19 | 0.682 | 0.318 | 3.25 | 97 | 1.92 | 0.837 | **0.000** | 11.6 |
+| **deep learning** | 17.99 | 0.549 | 0.388 | 5.43 | 167 | 1.19 | 0.816 | **0.000** | 12.9 |
+| **hybrid** | 18.16 | **0.729** | **0.275** | **3.10** | 417 | **2.41** | **0.857** | **0.000** | 11.6 |
+
+**LOL-v2 Synthetic Test (30 paired images)**
+
+| Method | PSNR ↑ | SSIM ↑ | LPIPS ↓ | NIQE ↓ | Latency ms ↓ | Noise suppr. ↑ | Edge pres. ↑ | Over-exp. ↓ | Colour dE ↓ |
+|---|---|---|---|---|---|---|---|---|---|
+| input (no enhancement) | 10.35 | 0.407 | 0.407 | 3.38 | 0 | 0.96 | 0.742 | 0.001 | 14.2 |
+| global auto-gamma | 16.13 | 0.785 | 0.217 | 3.82 | 7 | **1.17** | 0.914 | 0.001 | 12.7 |
+| global histogram eq. | 15.30 | 0.723 | 0.308 | 4.20 | 3 | 0.76 | 0.902 | 0.042 | 14.3 |
+| **classical** | 14.90 | 0.717 | 0.257 | **3.46** | 95 | 0.82 | 0.903 | **0.000** | 9.7 |
+| **deep learning** | **16.95** | **0.792** | **0.179** | 4.16 | 149 | 0.83 | **0.932** | **0.000** | **8.7** |
+| **hybrid** | 16.31 | 0.769 | 0.215 | 3.67 | 334 | 0.95 | 0.920 | **0.000** | 8.8 |
+
+**Unseen images without ground truth (DICM, LIME, MEF, NPE, VV, Fusion; mean of the six per-set means)**
+
+| Method | NIQE ↓ | Noise suppr. ↑ | Edge pres. ↑ | Over-exposed px ↓ | Detail ratio | Mean luma | Latency ms |
+|---|---|---|---|---|---|---|---|
+| input (no enhancement) | 2.91 | 0.95 | 1.000 | 0.026 | 1.00 | 0.22 | 0 |
+| global auto-gamma | 3.54 | 0.98 | 0.908 | 0.030 | 0.77 | 0.39 | 10 |
+| global histogram eq. | 3.54 | 5.37 | 0.826 | 0.085 | 1.02 | 0.44 | 5 |
+| **classical** | 3.45 | 0.77 | 0.933 | 0.017 | 0.97 | 0.33 | 177 |
+| **deep learning** | 3.95 | 0.76 | 0.929 | 0.019 | 0.91 | 0.36 | 238 |
+| **hybrid** | 3.44 | 0.86 | 0.936 | 0.017 | 0.91 | 0.35 | 592 |
+
+**What the numbers say (honestly)**
+
+* On the two **real** low-light test sets the **hybrid is best on SSIM, LPIPS and NIQE** and on edge preservation, with no over-exposure,
+  and it has the lowest colour shift on LOL eval15. Its PSNR is within 0.4 dB of the deep branch on LOL eval15 and the best of all on LOL-v2 Real among the learned methods.
+* **PSNR is not uniformly won by the hybrid.** The deep branch alone has the highest PSNR on LOL eval15 and on LOL-v2 Synthetic, and on LOL-v2 Real a plain global
+  auto-gamma curve scores a higher PSNR than every method (gamma 18.9 dB vs hybrid 18.2 dB), although with clearly worse SSIM (0.66 vs 0.73), LPIPS (0.39 vs 0.28) and NIQE (3.9 vs 3.1).
+  PSNR rewards matching the overall brightness of the reference; LOL-v2 references vary in exposure.
+* The deep branch alone is the **worst on NIQE** (about 5.4 on LOL, vs ~3.0-3.2 for classical/hybrid): it brightens well but leaves visibly noisier, less natural images.
+* On **LOL-v2 Synthetic** the classical branch scores *below* global gamma on PSNR/SSIM (its adaptive denoising and tone mapping are tuned for real sensor noise, which this synthetic set does not contain),
+  and deep learning wins; the hybrid sits between them. We did not tune anything on this set.
+* On **unseen** images (no reference) all three adaptive methods keep over-exposure no higher than the input while global histogram equalisation roughly triples it. The classical/hybrid methods have the best (lowest) NIQE of the adaptive methods on most sets;
+  however the **untouched input has the lowest NIQE on 5 of the 6 unseen sets** (all but NPE). NIQE rewards natural-image statistics and is known to be a weak judge of under-exposed images, so we treat it as a sanity check against artefacts, not as proof that enhancement is worse; the over-exposure, detail-ratio and brightness columns are the more informative ones here.
+* **Latency** (CPU, <= 600 px, includes the whole pipeline): classical ~0.15 s, deep ~0.2 s, hybrid ~0.4-0.5 s on average (mean over all sets, laptop CPU) - all well inside the 10-second interactive target.
+
+### 5.2 Ablation study
+
+Evaluated on the 30 first paired images pooled over LOL eval15 / LOL-v2 Real / LOL-v2 Synthetic (`results/final/ablation.csv`). Each row removes or replaces one component; the last columns give the change in PSNR against the full pipeline of the same family.
+
+| Variant | PSNR | SSIM | LPIPS | NIQE | Noise suppr. | Edge pres. | dPSNR |
+|---|---|---|---|---|---|---|---|
+| hybrid (full) | 17.92 | 0.698 | 0.291 | 3.11 | 2.37 | 0.845 | - |
+| hybrid - adaptive parameters (fixed) | 16.91 | 0.737 | 0.275 | 2.78 | 6.93 | 0.860 | -1.01 |
+| hybrid - illumination prior | 18.01 | 0.707 | 0.282 | 3.14 | 2.40 | 0.851 | +0.09 |
+| hybrid - pyramid blending (alpha blend) | 17.94 | 0.699 | 0.291 | 3.10 | 2.38 | 0.845 | +0.02 |
+| hybrid - DL pre-denoise | 17.88 | 0.624 | 0.316 | 4.69 | 1.47 | 0.833 | -0.04 |
+| hybrid - DL detail shrinkage | 17.92 | 0.690 | 0.293 | 3.37 | 2.14 | 0.844 | -0.00 |
+| hybrid - output guard (highlights/exposure) | 17.92 | 0.698 | 0.291 | 3.11 | 2.37 | 0.845 | +0.00 |
+| hybrid - classical denoise | 17.39 | 0.453 | 0.467 | 6.83 | 0.73 | 0.763 | -0.53 |
+| hybrid - classical shrinkage | 17.89 | 0.642 | 0.330 | 4.13 | 1.59 | 0.831 | -0.03 |
+| hybrid - tone stretch | 17.43 | 0.726 | 0.264 | 2.91 | 2.70 | 0.853 | -0.49 |
+| hybrid - CLAHE | 17.40 | 0.735 | 0.238 | 2.53 | 3.87 | 0.864 | -0.52 |
+| hybrid - colour correction | 18.13 | 0.703 | 0.291 | 3.12 | 2.39 | 0.846 | +0.21 |
+| hybrid - deep branch (= classical only) | 17.05 | 0.647 | 0.334 | 3.27 | 1.96 | 0.825 | -0.87 |
+| hybrid - classical branch (= DL + post only) | 18.36 | 0.738 | 0.246 | 2.93 | 3.81 | 0.860 | +0.44 |
+| classical (full) | 17.05 | 0.647 | 0.334 | 3.27 | 1.96 | 0.825 | - |
+| classical - adaptive parameters (fixed) | 14.74 | 0.677 | 0.303 | 2.67 | 6.64 | 0.843 | -2.31 |
+| classical - denoise | 16.50 | 0.380 | 0.524 | 7.59 | 0.58 | 0.736 | -0.55 |
+| classical - shrinkage | 17.03 | 0.575 | 0.380 | 4.57 | 1.26 | 0.808 | -0.03 |
+| classical - tone stretch | 15.85 | 0.679 | 0.312 | 3.03 | 2.15 | 0.830 | -1.20 |
+| classical - CLAHE | 15.98 | 0.695 | 0.256 | 2.26 | 4.06 | 0.857 | -1.07 |
+| classical - colour correction | 17.32 | 0.656 | 0.338 | 3.28 | 1.98 | 0.825 | +0.27 |
+| classical - guard | 17.05 | 0.647 | 0.334 | 3.27 | 1.96 | 0.825 | -0.00 |
+| classical: bilateral instead of guided denoise | 17.05 | 0.608 | 0.341 | 3.60 | 1.96 | 0.805 | +0.00 |
+| classical: MSRCP instead of illumination decomposition | 15.50 | 0.567 | 0.373 | 3.64 | 1.87 | 0.813 | -1.55 |
+| deep learning (quality-aware) | 17.96 | 0.535 | 0.380 | 5.58 | 1.26 | 0.816 | - |
+| deep learning - quality-awareness (raw Zero-DCE) | 17.96 | 0.535 | 0.380 | 5.58 | 1.26 | 0.816 | - |
+
+**Reading the ablation**
+
+* **Load-bearing components:** classical denoising (removing it: SSIM 0.65 -> 0.38 and NIQE 3.3 -> 7.6 for the classical pipeline; SSIM 0.70 -> 0.45 for the hybrid), the Wiener detail shrinkage (SSIM -0.07, NIQE +1.3), the illumination decomposition
+  (MSRCP instead: -1.6 dB, colour shift +3.9), and the deep branch inside the hybrid (+0.9 dB PSNR, +0.05 SSIM over classical alone).
+* **Tone stretch and CLAHE** raise PSNR (about +0.5 dB for the hybrid, +1.1 to +1.2 dB for classical) but *lower* the perceptual scores: without CLAHE, SSIM / LPIPS / NIQE all improve (hybrid SSIM 0.698 -> 0.735, NIQE 3.12 -> 2.53) because CLAHE adds local contrast and noise.
+  This is a genuine PSNR-versus-perception trade-off; we keep CLAHE on because the brief requires it and PSNR improves, but it is the first parameter to lower if perceptual quality matters more.
+* **Adaptive parameters:** for the classical pipeline adaptive selection is worth +2.3 dB PSNR over fixed parameters; for the hybrid +1.0 dB. The fixed-parameter variants have higher noise suppression and slightly better SSIM/LPIPS/NIQE
+  because their fixed settings are more aggressive (darker, smoother output, mean luma 0.27-0.33 vs 0.39): they trade brightness fidelity for smoothness. Adaptivity's clear benefit is robustness across exposure levels (see 5.3), not a uniform metric win on these dark images.
+* **Honest negative results.** The hybrid with the classical branch removed (deep learning + post-processing only) scores *higher* than the full hybrid on this pool (PSNR +0.4 dB, SSIM 0.738 vs 0.698, LPIPS 0.246 vs 0.291, NIQE 2.93 vs 3.12), with ~1.6x lower latency.
+  The classical branch earns its place on very noisy / very dark regions and in robustness (fewer over-exposed pixels on unseen images), not in the average LOL score. **Colour correction does not help on LOL:** removing it *raises* PSNR by about 0.2 dB (hybrid) / 0.3 dB (classical) and *lowers* the colour shift (hybrid 11.9 -> 11.4 dE). The grey-world assumption is wrong for many LOL scenes, so we keep it only as a partial (strength <= 0.6) correction; re-tuning or disabling it for LOL-like data is the obvious next step.
+  The illumination prior (+0.09 dB when removed), pyramid vs alpha blending (0.015 dB) and the output guard (0.000 dB) have no measurable effect on these dark images (the guard exists for bright inputs, see 5.3). The DL pre-denoise and DL detail shrinkage are PSNR-neutral but matter perceptually: removing the pre-denoise drops SSIM 0.698 -> 0.624 and raises NIQE 3.1 -> 4.7.
+
+### 5.3 Image-quality-aware strategy (deep branch)
+
+On LOL the quality-aware wrapper and the raw Zero-DCE rows are identical, because every LOL image is uniformly very dark (darkness ~1 -> full curve iterations, full strength, no exposure feedback): the wrapper is inert by design there.
+Its purpose is to avoid over-brightening images that are *not* very dark. Measured on the better-lit unseen sets (`results/quality_aware_check.md`): output mean luma 0.40 vs 0.59 (NPE), 0.36 vs 0.52 (VV), 0.38 vs 0.57 (Fusion), and over-exposed pixels 0.020 vs 0.051 (VV), 0.016 vs 0.022 (NPE), 0.036 vs 0.060 (Fusion), 0.033 vs 0.049 (DICM) - i.e. 30-60 % fewer over-exposed pixels.
 
 ## 6. Failure-case analysis
 
-`results/<run>/failure_analysis.md` lists the worst hybrid outputs with their measured input diagnostics and automatically detected
-failure modes. Failure modes **1 and 4 were observed** in the synthetic run; **2 and 3 are expected by construction but have not yet been
-demonstrated** - confirm or refute them on LOL / unseen images and update this section with the real cases:
+`results/final/failure_analysis.md` lists the five lowest-PSNR hybrid outputs with side-by-side panels
+(input | input x4 | classical | deep | hybrid | ground truth) and automatically measured diagnostics. Visual inspection of the worst cases shows these concrete failure modes:
 
-1. **Extremely dark + very noisy input (noise sigma > 0.025, darkness > 0.95)** - the signal is below the noise floor, so the pipeline
-   must choose between noise and detail. It removes noise (suppression x10-15) at the cost of smeared fine texture (detail ratio ~0.5,
-   e.g. fur and hair in `syn05`, `syn08`). Cause: the gain-aware denoiser's threshold is `k·sigma·G` and gains reach the cap (up to 16x).
-2. **Strongly non-uniform lighting with a localised light source** - the illumination estimate blends the bright blob into surrounding
-   shadows, leaving soft halos around the source or under-lit shadows that CLAHE then over-amplifies. Cause: a single smoothing radius
-   cannot match both the source boundary and the shadow structure.
-3. **Colour cast under coloured illumination** - grey-world correction assumes a neutral scene; for a dominant legitimate colour
-   (neon, sunset) it desaturates or shifts hue. Cause: the cast estimate cannot distinguish illuminant colour from scene colour; mitigated
-   by capping the correction strength at 0.6 and the gain range to [0.75, 1.33].
-4. **Under-trained / domain-shifted deep branch** - raw Zero-DCE desaturates and washes out dark, noisy inputs (grey/blue-white cast)
-   because its zero-reference exposure loss ignores noise and colour fidelity; the quality-aware wrapper and the hybrid weights reduce, but
-   cannot remove it. Fine-tuning on paired LOL data is the intended remedy.
+1. **Reference / exposure mismatch on already-lit images (`r05772356t`, 8.2 dB, SSIM 0.55).** The input is a daylight scene that is already reasonably exposed (mean luma 0.36, non-uniformity 0.79);
+   the adaptive strategy correctly changes it very little, but the synthetic "ground truth" is a washed-out, over-bright version, so PSNR is very low although the output looks natural.
+   Cause: the metric measures agreement with a reference whose exposure is not what a viewer would choose; this is a limitation of full-reference evaluation, not of the enhancer. Mitigation: report NIQE/LPIPS alongside PSNR (we do).
+2. **Dark, saturated colours are not restored (`r03193652t`, tulips, 10.5 dB, colour cast 0.25).** Deep-red petals come out dull brown where the reference is saturated red, and smooth green backgrounds show swirl-like
+   artefacts from the guided-filter / shrinkage stages. Cause: when the input chroma has almost no signal, colour has to be hallucinated; the conservative colour correction (capped at strength 0.6, gain range 0.75-1.33)
+   limits both over-saturation and recovery. A learned colour/chroma network would be the remedy.
+3. **Extremely dark input, residual noise and tint (LOL `55`, mean luma 0.04).** The hybrid recovers the scene and is cleaner than either branch alone, but fine speckle remains in the shadows and whites keep a slight green cast
+   (11.5 dB). Cause: the gain needed is so large that the per-pixel noise floor approaches the signal; the gain-aware denoiser removes most noise but trades some detail, and grey-world white balance only partially corrects a cast that varies across the image.
+4. **Strongly non-uniform lighting (non-uniformity 0.8-1.0 in four of the five worst images).** Bright and dark areas coexist in one image; a single smoothing radius for the illumination map cannot match both the source boundary and the shadows,
+   so shadows are under-lifted while bright regions are left alone. Per-region radii / multi-scale illumination estimation are the proposed fix (future work).
+5. **PSNR alone would pick the wrong system (LOL-v2 Real).** Plain auto-gamma beats every method on PSNR there (18.9 vs 18.2 dB) but is clearly worse on SSIM (0.66 vs 0.73), LPIPS (0.39 vs 0.28) and NIQE (3.9 vs 3.1) and recovers less detail/edge structure (edge preservation 0.75 vs 0.86).
+
+Not observed in our tests: halo artefacts around light sources or strong over-exposure (over-exposed pixel fraction is 0.000 on all three paired sets and not higher than the input on unseen sets). Pure colour-cast failures from coloured illuminants were not specifically tested.
 
 ## 7. Deployment and UX
 
@@ -135,7 +210,7 @@ Streamlit app (`app/streamlit_app.py`): upload (PNG/JPEG/TIFF/BMP/WebP, 25 MB ca
 (hybrid / classical / deep / compare all), optional reference image (enables PSNR/SSIM/LPIPS), synthetic-sample generator for demos,
 tabs for result + download, intermediate pipeline steps (illumination, reflectance, gain heat-map, denoise, shrinkage, CLAHE, colour,
 fusion weights), measured statistics + chosen parameters + histograms, and metrics. Corrupt files, oversized files and processing errors
-produce readable messages instead of stack traces; the model is cached across requests. Measured on a 4-core CPU at 800x600: classical ~0.25 s, deep ~0.65 s, hybrid ~1.1 s. Container image via `Dockerfile` (CPU PyTorch), no secrets.
+produce readable messages instead of stack traces; the model is cached across requests. Measured on a laptop CPU at <= 600 px (evaluation): classical ~0.15-0.25 s, deep ~0.25-0.3 s, hybrid ~0.4-0.8 s. Deployed on Streamlit Community Cloud (CPU only); free apps sleep when idle and need ~30 s to wake. Container image via `Dockerfile` (CPU PyTorch), no secrets.
 
 ## 8. Limitations, ethics, future work
 

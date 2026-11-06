@@ -1,0 +1,15 @@
+mode=supervised device=cuda train_items=7468 val_items=207
+initialised from weights/zero_dce_zr.pt
+parameters: 79416
+epoch   1/10 train=0.3321 val=0.3302 (305.3s) *saved*
+epoch   2/10 train=0.3239 val=0.3278 (352.5s) *saved*
+epoch   3/10 train=0.3225 val=0.3273 (320.4s) *saved*
+epoch   4/10 train=0.3210 val=0.3271 (363.4s) *saved*
+epoch   5/10 train=0.3199 val=0.3283 (289.7s)
+epoch   6/10 train=0.3186 val=0.3260 (302.8s) *saved*
+epoch   7/10 train=0.3179 val=0.3243 (283.8s) *saved*
+epoch   8/10 train=0.3171 val=0.3250 (210.6s)
+epoch   9/10 train=0.3168 val=0.3260 (209.1s)
+epoch  10/10 train=0.3161 val=0.3237 (211.5s) *saved*
+best val loss 0.32367099477694583 -> weights\zero_dce.pt
+finished

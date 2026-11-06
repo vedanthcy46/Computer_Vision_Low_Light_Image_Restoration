@@ -1,13 +1,3 @@
----
-title: Low-Light Image Restoration
-emoji: 🌙
-colorFrom: indigo
-colorTo: blue
-sdk: docker
-app_port: 8501
-pinned: false
----
-
 # Robust Low-Light Image Restoration and Enhancement (Problem Statement P1)
 
 Illumination-adaptive restoration of severely under-exposed, noisy, colour-distorted images that preserves edges and
@@ -39,25 +29,26 @@ Without `weights/zero_dce.pt` the app only offers the classical pipeline (see *T
 
 ## Reproducing the results
 
-1. **Get the datasets** (not in the repo) - see [`data/README.md`](data/README.md): LOL, LOL-v2 (Kaggle) and optionally MIT-Adobe FiveK.
+1. **Get the datasets** (not in the repo) - see [`data/README.md`](data/README.md): LOL, LOL-v2 (Kaggle), optionally the 1,000-pair BrighteningTrain set, and the unseen benchmark folders (DICM, LIME, MEF, NPE, VV, Fusion). We did not use MIT-Adobe FiveK.
 2. **Train / fine-tune Zero-DCE** (CPU is fine: tiny network; a GPU is used automatically if present)
 
    ```bash
    # a) zero-reference training on the low-light train images (no ground truth used)
-   python scripts/train.py --low data/LOL/our485/low data/LOL-v2/Real_captured/Train/Low --epochs 60
+   python scripts/train.py --low data/LOL/our485/low data/LOL-v2/Real_captured/Train/Low data/LOL-v2/Synthetic/Train/Low data/BrighteningTrain/low --epochs 15 --out weights/zero_dce_zr.pt
    # b) supervised fine-tuning on the paired train splits (L1 + SSIM loss)
-   python scripts/train.py --pairs data/LOL/our485 data/LOL-v2/Real_captured/Train \
-          --init weights/zero_dce.pt --epochs 30 --lr 5e-5
-   git add weights/zero_dce.pt            # ~330 KB, needed by the deployed app
+   python scripts/train.py --pairs data/LOL/our485 data/LOL-v2/Real_captured/Train data/LOL-v2/Synthetic/Train \
+          --init weights/zero_dce_zr.pt --mode supervised --epochs 10 --lr 5e-5 --out weights/zero_dce.pt
+   git add weights/zero_dce.pt weights/niqe_params.npz   # ~330 KB + 11 KB, needed by the deployed app
    ```
 3. **Fit the NIQE reference model** on well-exposed images (optional, offline NIQE):
-   `python scripts/fit_niqe.py data/LOL/our485/high data/LOL-v2/Real_captured/Train/Normal`
+   `python scripts/fit_niqe.py data/LOL/our485/high data/LOL-v2/Real_captured/Train/Normal data/BrighteningTrain/high`
 4. **Evaluate** (comparison + ablation + failure analysis + unseen images):
 
    ```bash
    python scripts/evaluate.py --data data/LOL/eval15 data/LOL-v2/Real_captured/Test data/LOL-v2/Synthetic/Test \
-          --unpaired data/unseen --ablation --team T01 --usns USN1,USN2,USN3 --out results/final
-   cp results/final/eval_P1_T01.md .          # hackathon deliverable (first line = USNs)
+          --unpaired data/unseen/DICM data/unseen/LIME data/unseen/MEF data/unseen/NPE data/unseen/VV data/unseen/Fusion \
+          --max-images 30 --ablation --failures 5 --team VisionX --usns 1RUA24CSE0525,1RUA24CSE0544 --out results/final
+   cp results/final/eval_P1_VisionX.md .      # hackathon deliverable (first line = USNs)
    ```
 
    Smoke test without any download: `python scripts/evaluate.py --synthetic 12 --allow-untrained --ablation`.
@@ -83,14 +74,20 @@ app/        streamlit_app.py        tests/   docs/   data/   weights/   Dockerfi
 
 ## Deployment
 
-The app is a single Streamlit process (CPU: ~0.25 s classical / ~1.1 s hybrid for an 800x600 image on 4 cores). Any container host works with the provided
-`Dockerfile` (it honours `$PORT`): Hugging Face Spaces (Docker SDK, set `app_port: 8501`), Render, Railway, Fly.io, Cloud Run.
-Streamlit Community Cloud also works directly from `requirements.txt` + `app/streamlit_app.py`. No secrets are needed.
+**Live app: https://visionxlowlightrestoration.streamlit.app/** (Streamlit Community Cloud, CPU only, deployed from this repository's
+`requirements.txt` + `app/streamlit_app.py`; free apps sleep when idle, so the first visit may take ~30 s to wake up).
+
+The app is a single Streamlit process (CPU, <= 600 px: ~0.15 s classical, ~0.2 s deep, ~0.4-0.5 s hybrid on a laptop; free Streamlit Cloud CPUs are slower). Any container host also works with the provided
+`Dockerfile` (it honours `$PORT`): Hugging Face Spaces (Docker SDK; add the usual Space front-matter with `app_port: 8501` to the Space's README), Render, Railway, Fly.io, Cloud Run. No secrets are needed.
 
 ## Limitations and ethics
 
-* Quality on real photographs depends on the trained `zero_dce.pt`; the checked-in code was verified on synthetic degradations
-  only, because the dataset hosts were unreachable in the build sandbox. Run the *Reproducing* steps to obtain real numbers.
+* Results (see `eval_P1_VisionX.md`, `docs/design.md` section 5) come from a **short** training run (15 epochs zero-reference + 10 epochs
+  supervised on a laptop GPU) and at most 30 test images per set; they are not tuned and not a state-of-the-art claim. The hybrid wins
+  SSIM/LPIPS/NIQE on LOL, but not PSNR everywhere (a plain gamma curve has higher PSNR on LOL-v2 Real, the deep branch on LOL-v2 Synthetic).
+* NIQE is a locally fitted NIQE-style model (not the official parameters), so values are only comparable within this repository.
+* Known weak spots (design doc section 6): dark saturated colours stay dull, very dark inputs keep some speckle and a slight colour tint,
+  strongly non-uniform lighting under-lifts shadows, and PSNR on already-lit images is dominated by reference exposure.
 * Extremely dark, noisy pixels contain no recoverable detail; the system trades detail for noise suppression there
   (see failure analysis). Enhanced regions are *plausible reconstructions*, not ground truth - do not use for forensic,
   medical or evidentiary purposes, and disclose enhancement when sharing images.

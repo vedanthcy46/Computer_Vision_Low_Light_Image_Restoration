@@ -20,7 +20,7 @@ Architecture: [`docs/architecture.md`](docs/architecture.md) · Design document:
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt            # CPU PyTorch is enough
-python -m pytest -q                        # 38 tests (needs: pip install -r requirements-dev.txt)
+python -m pytest -q                        # 42 tests (needs: pip install -r requirements-dev.txt)
 streamlit run app/streamlit_app.py         # http://localhost:8501
 # or:  docker build -t lowlight . && docker run -p 8501:8501 lowlight
 ```
@@ -77,7 +77,7 @@ app/        streamlit_app.py        tests/   docs/   data/   weights/   Dockerfi
 **Live app: https://visionxlowlightrestoration.streamlit.app/** (Streamlit Community Cloud, CPU only, deployed from this repository's
 `requirements.txt` + `app/streamlit_app.py`; free apps sleep when idle, so the first visit may take ~30 s to wake up).
 
-The app is a single Streamlit process (CPU, <= 600 px: ~0.15 s classical, ~0.2 s deep, ~0.4-0.5 s hybrid on a laptop; free Streamlit Cloud CPUs are slower). Any container host also works with the provided
+The app is a single Streamlit process (CPU, <= 600 px: ~0.1-0.2 s classical, ~0.15-0.25 s deep, ~0.3-0.6 s hybrid on a laptop (~2 s for an 800 px hybrid run on the free Streamlit Cloud CPU); free Streamlit Cloud CPUs are slower). Any container host also works with the provided
 `Dockerfile` (it honours `$PORT`): Hugging Face Spaces (Docker SDK; add the usual Space front-matter with `app_port: 8501` to the Space's README), Render, Railway, Fly.io, Cloud Run. No secrets are needed.
 
 ## Limitations and ethics

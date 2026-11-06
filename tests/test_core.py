@@ -184,3 +184,31 @@ def test_find_pairs_lol_layouts(tmp_path):
         Image.fromarray(np.zeros((8, 8, 3), np.uint8)).save(d / "111.png")
     assert len(find_pairs(tmp_path / "LOL-v2")) == 2
     assert len(find_pairs(tmp_path / "LOL")) == 1
+
+
+def test_load_image_downscales_before_float_conversion_and_keeps_orientation():
+    import io
+    from PIL import Image
+    # large JPEG is shrunk to max_side (decoded at reduced scale, never as a full float32 array)
+    b = io.BytesIO()
+    Image.fromarray(np.full((1500, 2000, 3), 30, np.uint8)).save(b, "JPEG")
+    img = load_image(b.getvalue(), max_side=500)
+    assert img.dtype == np.float32 and max(img.shape[:2]) <= 500 and img.shape[2] == 3
+    assert 0.0 <= img.min() and img.max() <= 1.0
+    # EXIF orientation (rotate 90 deg) is still honoured
+    im = Image.new("RGB", (300, 100))
+    exif = im.getexif()
+    exif[274] = 6
+    b = io.BytesIO()
+    im.save(b, "JPEG", exif=exif)
+    assert load_image(b.getvalue(), max_side=800).shape[:2] == (300, 100)
+    # without max_side nothing is resized
+    b = io.BytesIO()
+    Image.fromarray(np.zeros((30, 40, 3), np.uint8)).save(b, "PNG")
+    assert load_image(b.getvalue()).shape[:2] == (30, 40)
+
+
+@pytest.mark.parametrize("data", [b"", b"not an image", bytes(range(256)) * 20])
+def test_load_image_rejects_garbage_with_readable_error(data):
+    with pytest.raises(InvalidImageError):
+        load_image(data, max_side=800)

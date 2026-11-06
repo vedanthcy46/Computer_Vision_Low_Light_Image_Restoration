@@ -62,7 +62,13 @@ def load_image(src, max_side: int | None = None) -> np.ndarray:
             im = Image.open(io.BytesIO(src))
         else:
             im = Image.open(src)
+        if max_side and im.format == "JPEG":
+            # decode JPEGs at a reduced scale (DCT scaling): far less memory and time for large photos
+            im.draft("RGB", (max_side, max_side))
         im = ImageOps.exif_transpose(im)
+        if max_side and max(im.size) > max_side and im.mode not in ("I;16", "I;16B", "I", "F"):
+            # shrink *before* converting to float32, so a 100 MP upload never needs gigabytes of RAM
+            im.thumbnail((max_side, max_side), Image.Resampling.BILINEAR, reducing_gap=2.0)
         if im.mode in ("I;16", "I;16B", "I"):
             arr = np.asarray(im).astype(np.float32)
             arr = arr / (65535.0 if arr.max() > 255 else 255.0)

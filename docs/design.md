@@ -15,7 +15,7 @@ testing on unseen images, PSNR/SSIM/LPIPS/NIQE/latency/noise/edge metrics and a 
 | Contrast and colour correction | tone stretch, CLAHE, grey-world + saturation (`classical.py`) |
 | Adaptive parameter selection | `quality.py` -> `adaptive.select_params` |
 | RetinexNet / Zero-DCE / EnlightenGAN | **Zero-DCE** (`dl/zero_dce.py`) |
-| Fine-tune on available data | `scripts/train.py` (zero-reference, supervised, or mixed) on LOL / LOL-v2 / FiveK |
+| Fine-tune on available data | `scripts/train.py` (zero-reference, supervised, or mixed) on LOL / LOL-v2 / BrighteningTrain |
 | Generalisation, image-quality-aware strategy | `dl/infer.DLEnhancer(quality_aware=True)`; evaluation on LOL-v2 + unseen folder |
 | Classical + DL integration, adaptive combination | `hybrid.py` (illumination-gated pyramid fusion) |
 | Compare classical / DL / hybrid; ablation | `scripts/evaluate.py`, `variants.py` |
@@ -110,7 +110,7 @@ Best value per column (among the five methods, input excluded) is in bold. This 
 | **deep learning** | **16.95** | **0.792** | **0.179** | 4.16 | 149 | 0.83 | **0.932** | **0.000** | **8.7** |
 | **hybrid** | 16.31 | 0.769 | 0.215 | 3.67 | 334 | 0.95 | 0.920 | **0.000** | 8.8 |
 
-**Unseen images without ground truth (DICM, LIME, MEF, NPE, VV, Fusion; mean of the six per-set means)**
+**Unseen images without ground truth (DICM, LIME, MEF, NPE, VV, Fusion; mean of the six per-set means; the histogram-eq. noise-suppression figure is dominated by one set, MEF, and is not meaningful)**
 
 | Method | NIQE ↓ | Noise suppr. ↑ | Edge pres. ↑ | Over-exposed px ↓ | Detail ratio | Mean luma | Latency ms |
 |---|---|---|---|---|---|---|---|
@@ -129,11 +129,11 @@ Best value per column (among the five methods, input excluded) is in bold. This 
   auto-gamma curve scores a higher PSNR than every method (gamma 18.9 dB vs hybrid 18.2 dB), although with clearly worse SSIM (0.66 vs 0.73), LPIPS (0.39 vs 0.28) and NIQE (3.9 vs 3.1).
   PSNR rewards matching the overall brightness of the reference; LOL-v2 references vary in exposure.
 * The deep branch alone is the **worst on NIQE** (about 5.4 on LOL, vs ~3.0-3.2 for classical/hybrid): it brightens well but leaves visibly noisier, less natural images.
-* On **LOL-v2 Synthetic** the classical branch scores *below* global gamma on PSNR/SSIM (its adaptive denoising and tone mapping are tuned for real sensor noise, which this synthetic set does not contain),
+* On **LOL-v2 Synthetic** the classical branch scores *below* global gamma on PSNR/SSIM (a likely reason, not verified here: its adaptive denoising and tone mapping are designed around real sensor noise, which this synthetic set models differently),
   and deep learning wins; the hybrid sits between them. We did not tune anything on this set.
 * On **unseen** images (no reference) all three adaptive methods keep over-exposure no higher than the input while global histogram equalisation roughly triples it. The classical/hybrid methods have the best (lowest) NIQE of the adaptive methods on most sets;
   however the **untouched input has the lowest NIQE on 5 of the 6 unseen sets** (all but NPE). NIQE rewards natural-image statistics and is known to be a weak judge of under-exposed images, so we treat it as a sanity check against artefacts, not as proof that enhancement is worse; the over-exposure, detail-ratio and brightness columns are the more informative ones here.
-* **Latency** (CPU, <= 600 px, includes the whole pipeline): classical ~0.15 s, deep ~0.2 s, hybrid ~0.4-0.5 s on average (mean over all sets, laptop CPU) - all well inside the 10-second interactive target.
+* **Latency** (CPU, <= 600 px, includes the whole pipeline): classical ~0.1-0.2 s, deep ~0.15-0.25 s, hybrid ~0.3-0.6 s per image (laptop CPU, per-set means in the tables above). The live app on the free Streamlit Cloud CPU is slower: one 800 px hybrid run took about 2 s. Both are well inside the 10-second interactive target.
 
 ### 5.2 Ablation study
 
@@ -210,7 +210,7 @@ Streamlit app (`app/streamlit_app.py`): upload (PNG/JPEG/TIFF/BMP/WebP, 25 MB ca
 (hybrid / classical / deep / compare all), optional reference image (enables PSNR/SSIM/LPIPS), synthetic-sample generator for demos,
 tabs for result + download, intermediate pipeline steps (illumination, reflectance, gain heat-map, denoise, shrinkage, CLAHE, colour,
 fusion weights), measured statistics + chosen parameters + histograms, and metrics. Corrupt files, oversized files and processing errors
-produce readable messages instead of stack traces; the model is cached across requests. Measured on a laptop CPU at <= 600 px (evaluation): classical ~0.15-0.25 s, deep ~0.25-0.3 s, hybrid ~0.4-0.8 s. Deployed on Streamlit Community Cloud (CPU only); free apps sleep when idle and need ~30 s to wake. Container image via `Dockerfile` (CPU PyTorch), no secrets.
+produce readable messages instead of stack traces; the model is cached across requests. Measured on a laptop CPU at <= 600 px (evaluation): classical ~0.1-0.2 s, deep ~0.15-0.25 s, hybrid ~0.3-0.6 s (see 5.1). Deployed on Streamlit Community Cloud (CPU only; one 800 px hybrid run took ~2 s there); free apps sleep when idle and need ~30 s to wake. Container image via `Dockerfile` (CPU PyTorch), no secrets.
 
 ## 8. Limitations, ethics, future work
 

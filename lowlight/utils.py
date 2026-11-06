@@ -62,7 +62,13 @@ def load_image(src, max_side: int | None = None) -> np.ndarray:
             im = Image.open(io.BytesIO(src))
         else:
             im = Image.open(src)
+        if max_side and im.format == "JPEG":
+            # decode JPEGs at a reduced scale (DCT scaling): far less memory and time for large photos
+            im.draft("RGB", (max_side, max_side))
         im = ImageOps.exif_transpose(im)
+        if max_side and max(im.size) > max_side and im.mode not in ("I;16", "I;16B", "I", "F"):
+            # shrink *before* converting to float32, so a 100 MP upload never needs gigabytes of RAM
+            im.thumbnail((max_side, max_side), Image.Resampling.BILINEAR, reducing_gap=2.0)
         if im.mode in ("I;16", "I;16B", "I"):
             arr = np.asarray(im).astype(np.float32)
             arr = arr / (65535.0 if arr.max() > 255 else 255.0)
@@ -73,6 +79,9 @@ def load_image(src, max_side: int | None = None) -> np.ndarray:
         raise
     except Exception as exc:  # corrupt / unsupported file
         raise InvalidImageError("unsupported or corrupt image file") from exc
+    img = np.clip(np.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0).astype(np.float32, copy=False)
+    if img.ndim != 3 or img.shape[2] != 3 or min(img.shape[:2]) < 1:
+        raise InvalidImageError("unsupported image shape")
     if max_side:
         img = resize_max_side(img, max_side)
     return img

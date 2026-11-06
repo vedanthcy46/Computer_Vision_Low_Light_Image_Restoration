@@ -36,7 +36,7 @@ flowchart TD
     OUT --> APP[Streamlit app<br/>result · pipeline steps · analysis · metrics]
     OUT --> EV[evaluate.py<br/>PSNR SSIM LPIPS NIQE latency noise edge<br/>comparison · ablation · failure analysis]
 
-    TR[train.py<br/>zero-reference + supervised fine-tuning<br/>LOL · LOL-v2 · FiveK] -.weights/zero_dce.pt.-> D2
+    TR[train.py<br/>zero-reference + supervised fine-tuning<br/>LOL · LOL-v2 · BrighteningTrain] -.weights/zero_dce.pt.-> D2
 ```
 
 ## Module map

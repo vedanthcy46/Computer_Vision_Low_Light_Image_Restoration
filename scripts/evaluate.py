@@ -125,7 +125,8 @@ def failure_analysis(df, datasets, outputs, outdir: Path, n: int) -> str:
     lines = ["# Failure-case analysis (hybrid method)\n"]
     h = df[df.method == "hybrid"].copy()
     key = "PSNR" if h["PSNR"].notna().any() else "NIQE"
-    h = h.sort_values(key, ascending=(key != "PSNR")) if key == "PSNR" else h.sort_values(key, ascending=False)
+    # worst = lowest PSNR, or highest NIQE (lower NIQE is better)
+    h = h.sort_values(key, ascending=(key == "PSNR"))
     lines.append(f"Worst {n} images by **{key}** ({'lowest' if key == 'PSNR' else 'highest'} = worst). "
                  "Failure tags are derived automatically from measured diagnostics; the written causes in "
                  "`docs/design.md` summarise them.\n")
@@ -225,7 +226,7 @@ def main():
     fail_md = ""
     if any(m for m in all_out if m[0] == "hybrid"):
         fail_md = failure_analysis(full, datasets, all_out, outdir, a.failures)
-        (outdir / "failure_analysis.md").write_text(fail_md)
+        (outdir / "failure_analysis.md").write_text(fail_md, encoding="utf-8")
 
     # ------------------------------------------------------------------ eval_P1_<team>.md
     show = ["PSNR", "SSIM", "LPIPS", "NIQE", "Latency_ms", "NoiseSuppression", "EdgePreservation"]
@@ -238,7 +239,7 @@ def main():
         lines += [f"## {dname} ({n_img} images)", "", md_table(s[[c for c in show if c in s]]), "",
                   "Additional diagnostics:", "", md_table(s[[c for c in M.EXTRA_ORDER if c in s]]), ""]
     lines += [abl_md, "", "## Failure-case analysis", "", "See `failure_analysis.md` / `docs/design.md`.", ""]
-    (outdir / f"eval_P1_{a.team}.md").write_text("\n".join(lines))
+    (outdir / f"eval_P1_{a.team}.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"\nWrote {outdir / f'eval_P1_{a.team}.md'}")
     for dname, s in summaries.items():
         print(f"\n{dname}\n{s.round(3).to_string()}")

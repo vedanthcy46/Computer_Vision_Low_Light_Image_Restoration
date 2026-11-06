@@ -25,8 +25,18 @@ MAX_BYTES = 25 * 1024 * 1024
 st.set_page_config(page_title="Low-Light Restoration", page_icon="🌙", layout="wide")
 
 
+def _weights_stamp() -> tuple:
+    """Changes whenever the checkpoint changes, so a redeploy with new weights is never served from a stale cache."""
+    from lowlight.dl.infer import DEFAULT_WEIGHTS
+    try:
+        s = DEFAULT_WEIGHTS.stat()
+        return (s.st_size, int(s.st_mtime))
+    except OSError:
+        return (0, 0)
+
+
 @st.cache_resource(show_spinner="Loading models...")
-def get_models():
+def get_models(stamp: tuple):  # `stamp` is part of the cache key (no leading underscore)
     model, loaded = load_model()
     return DLEnhancer(model=model), loaded
 
@@ -37,6 +47,29 @@ def build(method: str, dl: DLEnhancer, adaptive: bool):
     if method == "Deep learning (Zero-DCE)":
         return dl
     return HybridEnhancer(dl, HybridConfig(adaptive=adaptive))
+
+
+def _as_rgb8(arr) -> Image.Image:
+    """Any image-like array -> clean 8-bit RGB PIL image (finite, in range), so st.image never rejects it."""
+    a = np.asarray(arr)
+    if a.dtype != np.uint8:
+        a = np.nan_to_num(a.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+        a = (np.clip(a, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+    if a.ndim == 2:
+        a = np.repeat(a[..., None], 3, axis=2)
+    elif a.ndim == 3 and a.shape[2] == 1:
+        a = np.repeat(a, 3, axis=2)
+    elif a.ndim == 3 and a.shape[2] == 4:
+        a = a[..., :3]
+    return Image.fromarray(np.ascontiguousarray(a), "RGB")
+
+
+def show(target, arr, caption: str, width="stretch"):
+    """Display an image; on any problem show a short notice instead of crashing the whole page."""
+    try:
+        target.image(_as_rgb8(arr), caption=caption, width=width)
+    except Exception as e:  # noqa: BLE001 - never let one preview break the app
+        target.warning(f"Could not display '{caption}' ({type(e).__name__}).")
 
 
 def png_bytes(img: np.ndarray) -> bytes:
@@ -51,7 +84,7 @@ def metrics_row(inp, out, ms, gt=None):
 
 
 # ------------------------------------------------------------------------------ UI
-dl, weights_ok = get_models()
+dl, weights_ok = get_models(_weights_stamp())
 st.title("🌙 Adaptive Low-Light Image Restoration")
 st.caption("Illumination-adaptive enhancement: classical Retinex/CLAHE · Zero-DCE deep curves · hybrid fusion")
 
@@ -125,15 +158,15 @@ tab_res, tab_steps, tab_an, tab_met = st.tabs(["Result", "Pipeline steps", "Anal
 with tab_res:
     if method.startswith("Compare"):
         cols = st.columns(len(results) + 1)
-        cols[0].image(img, caption="Input", width="stretch")
+        show(cols[0], img, "Input")
         for c, (m, (r, t)) in zip(cols[1:], results.items()):
-            c.image(r.image, caption=f"{m} - {t:.0f} ms", width="stretch")
+            show(c, r.image, f"{m} - {t:.0f} ms")
     else:
         c1, c2 = st.columns(2)
-        c1.image(img, caption="Input", width="stretch")
-        c2.image(res.image, caption=f"{main} - {ms:.0f} ms", width="stretch")
+        show(c1, img, "Input")
+        show(c2, res.image, f"{main} - {ms:.0f} ms")
     if gt is not None:
-        st.image(gt, caption="Reference", width=320)
+        show(st, gt, "Reference", width=320)
     st.download_button("Download result (PNG)", png_bytes(res.image), file_name="enhanced.png", mime="image/png")
     if stats.darkness < 0.15:
         st.success("The input is already well exposed; the adaptive strategy applied only a very light touch.")
@@ -149,7 +182,7 @@ with tab_steps:
             label = NICE_NAMES.get(k.split("/")[-1], k)
             if k.startswith("classical/"):
                 label = "Classical · " + label
-            cols[i % 3].image(to_display(k.split("/")[-1], res.stages[k]), caption=label, width="stretch")
+            show(cols[i % 3], to_display(k.split("/")[-1], res.stages[k]), label)
 
 with tab_an:
     c1, c2 = st.columns(2)

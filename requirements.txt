@@ -1,0 +1,11 @@
+numpy>=1.26
+scipy>=1.11
+opencv-python-headless>=4.9
+scikit-image>=0.22
+pillow>=10.0
+matplotlib>=3.8
+torch>=2.2
+torchvision>=0.17
+lpips>=0.1.4
+streamlit>=1.50
+pandas>=2.0

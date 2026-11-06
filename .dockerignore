@@ -1,0 +1,9 @@
+.git
+__pycache__
+.pytest_cache
+data
+results
+tests
+docs
+*.md
+!README.md

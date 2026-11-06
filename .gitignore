@@ -10,3 +10,6 @@ runs/
 *.egg-info/
 .streamlit/secrets.toml
 .env
+
+*.zip
+weights/zero_dce_zr.pt

@@ -1,3 +1,13 @@
+---
+title: Low-Light Image Restoration
+emoji: 🌙
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 8501
+pinned: false
+---
+
 # Robust Low-Light Image Restoration and Enhancement (Problem Statement P1)
 
 Illumination-adaptive restoration of severely under-exposed, noisy, colour-distorted images that preserves edges and

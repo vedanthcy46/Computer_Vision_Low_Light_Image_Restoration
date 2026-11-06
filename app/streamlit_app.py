@@ -25,8 +25,18 @@ MAX_BYTES = 25 * 1024 * 1024
 st.set_page_config(page_title="Low-Light Restoration", page_icon="🌙", layout="wide")
 
 
+def _weights_stamp() -> tuple:
+    """Changes whenever the checkpoint changes, so a redeploy with new weights is never served from a stale cache."""
+    from lowlight.dl.infer import DEFAULT_WEIGHTS
+    try:
+        s = DEFAULT_WEIGHTS.stat()
+        return (s.st_size, int(s.st_mtime))
+    except OSError:
+        return (0, 0)
+
+
 @st.cache_resource(show_spinner="Loading models...")
-def get_models():
+def get_models(stamp: tuple):  # `stamp` is part of the cache key (no leading underscore)
     model, loaded = load_model()
     return DLEnhancer(model=model), loaded
 
@@ -51,7 +61,7 @@ def metrics_row(inp, out, ms, gt=None):
 
 
 # ------------------------------------------------------------------------------ UI
-dl, weights_ok = get_models()
+dl, weights_ok = get_models(_weights_stamp())
 st.title("🌙 Adaptive Low-Light Image Restoration")
 st.caption("Illumination-adaptive enhancement: classical Retinex/CLAHE · Zero-DCE deep curves · hybrid fusion")
 

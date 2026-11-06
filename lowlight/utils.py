@@ -79,6 +79,9 @@ def load_image(src, max_side: int | None = None) -> np.ndarray:
         raise
     except Exception as exc:  # corrupt / unsupported file
         raise InvalidImageError("unsupported or corrupt image file") from exc
+    img = np.clip(np.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0).astype(np.float32, copy=False)
+    if img.ndim != 3 or img.shape[2] != 3 or min(img.shape[:2]) < 1:
+        raise InvalidImageError("unsupported image shape")
     if max_side:
         img = resize_max_side(img, max_side)
     return img
